@@ -1,3 +1,4 @@
+import imp
 import mmcv
 import numpy as np
 import pycocotools.mask as mask_utils
@@ -178,8 +179,9 @@ def OBBDet2Comp4(dataset, results):
 
 def OBBDetComp4(dataset, results):
     results_dict = {}
+    # print(dataset['img_info'])
     for idx in range(len(dataset)):
-        filename = dataset.img_infos[idx]['filename']
+        filename = dataset.data_infos[idx]['filename']
         result = results[idx]
         for label in range(len(result)):
             rbboxes = result[label]

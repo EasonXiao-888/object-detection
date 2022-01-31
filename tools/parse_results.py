@@ -2,11 +2,13 @@ from __future__ import division
 
 import argparse
 from ast import parse
+from distutils.command import build
 import os.path as osp
 import shutil
 import tempfile
 
 import mmcv
+from mmdet.datasets import *
 # from mmdet.apis import init_dist
 from mmdet.core import  HBBSeg2Comp4,  OBBDetComp4, HBBOBB2Comp4, HBBDet2Comp4
     # results2json, coco_eval, OBBDet2Comp4
@@ -63,6 +65,8 @@ def parse_results(config_file, resultfile, dstpath, type):
 
     data_test = cfg.data['test']
     dataset = get_dataset(data_test)
+    # dataset = build_dataset(data_test)
+    # print(dataset.data_infos)
     outputs = mmcv.load(resultfile)
     if type == 'OBB':
         #  dota1 has tested

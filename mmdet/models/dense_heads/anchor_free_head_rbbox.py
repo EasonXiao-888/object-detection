@@ -137,8 +137,8 @@ class AnchorFreeHeadRbbox(BaseDenseHead, BBoxTestMixin):
         """Initialize predictor layers of the head."""
         self.conv_cls = nn.Conv2d(
             self.feat_channels, self.cls_out_channels, 3, padding=1)
-        # self.conv_reg = nn.Conv2d(self.feat_channels, 4, 3, padding=1)
-        self.conv_reg = nn.Conv2d(self.feat_channels, 5, 3, padding=1)
+        self.conv_reg = nn.Conv2d(self.feat_channels, 4, 3, padding=1)
+        # self.conv_reg = nn.Conv2d(self.feat_channels, 5, 3, padding=1)
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
                               missing_keys, unexpected_keys, error_msgs):
@@ -225,6 +225,7 @@ class AnchorFreeHeadRbbox(BaseDenseHead, BBoxTestMixin):
              cls_scores,
              bbox_preds,
              gt_bboxes,
+             gt_masks,
              gt_labels,
              img_metas,
              gt_bboxes_ignore=None):
@@ -273,7 +274,7 @@ class AnchorFreeHeadRbbox(BaseDenseHead, BBoxTestMixin):
         raise NotImplementedError
 
     @abstractmethod
-    def get_targets(self, points, gt_bboxes_list, gt_labels_list):
+    def get_targets(self, points, gt_bboxes_list, gt_masks, gt_labels_list):
         """Compute regression, classification and centerness targets for points
         in multiple images.
 

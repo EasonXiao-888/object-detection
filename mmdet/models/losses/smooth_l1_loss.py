@@ -1,6 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import mmcv
 import torch
+from torch._C import device
 import torch.nn as nn
 
 from ..builder import LOSSES
@@ -26,6 +27,7 @@ def smooth_l1_loss(pred, target, beta=1.0):
         return pred.sum() * 0
 
     assert pred.size() == target.size()
+    # diff = torch.abs(pred - target).to(device)
     diff = torch.abs(pred - target)
     loss = torch.where(diff < beta, 0.5 * diff * diff / beta,
                        diff - 0.5 * beta)

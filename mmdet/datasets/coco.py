@@ -15,7 +15,7 @@ from mmdet.core import eval_recalls
 from .api_wrappers import COCO, COCOeval
 from .builder import DATASETS
 from .custom import CustomDataset
-
+from mmdet.core import BitmapMasks
 
 @DATASETS.register_module()
 class CocoDataset(CustomDataset):
@@ -118,7 +118,8 @@ class CocoDataset(CustomDataset):
         self.img_ids = valid_img_ids
         return valid_inds
 
-    def _parse_ann_info(self, img_info, ann_info):
+    # def _parse_ann_info(self, img_info, ann_info):
+    def _parse_ann_info(self , img_info, ann_info, with_mask=True):
         """Parse bbox and mask annotation.
 
         Args:
@@ -152,7 +153,7 @@ class CocoDataset(CustomDataset):
             else:
                 gt_bboxes.append(bbox)
                 gt_labels.append(self.cat2label[ann['category_id']])
-                gt_masks_ann.append(ann.get('segmentation', None))
+                gt_masks_ann.append(ann['segmentation'])
 
         if gt_bboxes:
             gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
@@ -167,6 +168,8 @@ class CocoDataset(CustomDataset):
             gt_bboxes_ignore = np.zeros((0, 4), dtype=np.float32)
 
         seg_map = img_info['filename'].replace('jpg', 'png')
+
+        # print(gt_masks_ann)
 
         ann = dict(
             bboxes=gt_bboxes,

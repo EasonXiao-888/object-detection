@@ -2,19 +2,19 @@
 
 PYTHON=${PYTHON:-"python"}
 
-echo "Building sigmoid_focal_loss op..."
-cd mmdet/ops/nms
-if [ -d "build" ]; then
-    rm -r build
-fi
-$PYTHON setup.py build_ext --inplace
-
-# echo "Building rbbox_cython op..."
-# cd mmdet/core/bbox/
+# echo "Building sigmoid_focal_loss op..."
+# cd mmdet/ops/nms
 # if [ -d "build" ]; then
 #     rm -r build
 # fi
-# $PYTHON setup_linux.py build_ext --inplace
+# $PYTHON setup.py build_ext --inplace
+
+# echo "Building fcosr_tools op..."
+# cd mmdet/ops/fcosr_tool
+# if [ -d "build" ]; then
+#     rm -r build
+# fi
+# $PYTHON setup_tools.py build_ext --inplace
 
 # echo "Building sigmoid_focal_loss op..."
 # cd mmdet/ops/sigmoid_focal_loss
@@ -44,12 +44,12 @@ $PYTHON setup.py build_ext --inplace
 # fi
 # $PYTHON setup.py build_ext --inplace
 # 
-# echo "Building poly_nms op..."
-# cd ../poly_nms
-# if [ -d "build" ]; then
-#     rm -r build
-# fi
-# $PYTHON setup.py build_ext --inplace
+echo "Building poly_nms op..."
+cd ../poly_nms
+if [ -d "build" ]; then
+    rm -r build
+fi
+$PYTHON setup.py build_ext --inplace
 # 
 # echo "Building cpu_nms..."
 # cd ../../core/bbox

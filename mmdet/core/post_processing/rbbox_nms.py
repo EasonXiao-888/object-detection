@@ -26,15 +26,15 @@ def multiclass_nms_rbbox(multi_bboxes,
     num_classes = multi_scores.shape[1]
     bboxes, labels = [], []
     nms_cfg_ = nms_cfg.copy()
-    # nms_type = nms_cfg_.pop('type', 'nms')
-    # nms_op = py_cpu_nms_poly_fast
-
     nms_type = nms_cfg_.pop('type', 'nms')
+    nms_op = py_cpu_nms_poly_fast
+
+    # nms_type = nms_cfg_.pop('type', 'nms')
     # TODO: refactor it
-    if nms_type == 'poly_nms':
-        nms_op = getattr(poly_nms_wrapper, nms_type)
-    else:
-        nms_op = getattr(rnms_wrapper, nms_type)
+    # if nms_type == 'poly_nms':
+        # nms_op = getattr(poly_nms_wrapper, nms_type)
+    # else:
+        # nms_op = getattr(rnms_wrapper, nms_type)
     for i in range(1, num_classes):
         cls_inds = multi_scores[:, i] > score_thr
         if not cls_inds.any():

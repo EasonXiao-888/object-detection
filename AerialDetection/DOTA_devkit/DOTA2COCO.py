@@ -3,6 +3,8 @@ import os
 import cv2
 import json
 from PIL import Image
+import pycocotools.mask as maskUtils
+import numpy as np
 
 wordname_15 = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
                'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter']
@@ -49,21 +51,28 @@ def DOTA2COCOTrain(srcpath, destfile, cls_names, difficult='2'):
                 if obj['difficult'] == difficult:
                     print('difficult: ', difficult)
                     continue
-                single_obj = {}
-                single_obj['area'] = obj['area']
-                single_obj['category_id'] = cls_names.index(obj['name']) + 1
-                single_obj['segmentation'] = []
-                single_obj['segmentation'].append(obj['poly'])
-                single_obj['iscrowd'] = 0
-                xmin, ymin, xmax, ymax = min(obj['poly'][0::2]), min(obj['poly'][1::2]), \
-                                         max(obj['poly'][0::2]), max(obj['poly'][1::2])
-
-                width, height = xmax - xmin, ymax - ymin
-                single_obj['bbox'] = xmin, ymin, width, height
-                single_obj['image_id'] = image_id
-                data_dict['annotations'].append(single_obj)
-                single_obj['id'] = inst_count
-                inst_count = inst_count + 1
+                # gt_mask = obj['poly']
+                # gt_mask = np.array(gt_mask).reshape(1,8).tolist()
+                # w1 = single_image['width']
+                # h1 = single_image['height']
+                # gt_mask = _poly2mask(gt_mask,h1,w1)
+                # if sum(sum(gt_mask)) == 0:
+                #     continue
+                else:
+                    single_obj = {}
+                    single_obj['area'] = obj['area']
+                    single_obj['category_id'] = cls_names.index(obj['name']) + 1
+                    single_obj['segmentation'] = []
+                    single_obj['segmentation'].append(obj['poly'])
+                    single_obj['iscrowd'] = 0
+                    xmin, ymin, xmax, ymax = min(obj['poly'][0::2]), min(obj['poly'][1::2]), \
+                                             max(obj['poly'][0::2]), max(obj['poly'][1::2])
+                    width, height = xmax - xmin, ymax - ymin
+                    single_obj['bbox'] = xmin, ymin, width, height
+                    single_obj['image_id'] = image_id
+                    data_dict['annotations'].append(single_obj)
+                    single_obj['id'] = inst_count
+                    inst_count = inst_count + 1
             image_id = image_id + 1
         json.dump(data_dict, f_out)
 
@@ -96,6 +105,33 @@ def DOTA2COCOTest(srcpath, destfile, cls_names):
 
             image_id = image_id + 1
         json.dump(data_dict, f_out)
+
+def _poly2mask(mask_ann, img_h, img_w):
+        """Private function to convert masks represented with polygon to
+        bitmaps.
+
+        Args:
+            mask_ann (list | dict): Polygon mask annotation input.
+            img_h (int): The height of output mask.
+            img_w (int): The width of output mask.
+
+        Returns:
+            numpy.ndarray: The decode bitmap mask of shape (img_h, img_w).
+        """
+
+        if isinstance(mask_ann, list):
+            # polygon -- a single object might consist of multiple parts
+            # we merge all parts into one mask rle code
+            rles = maskUtils.frPyObjects(mask_ann, img_h, img_w)
+            rle = maskUtils.merge(rles)
+        elif isinstance(mask_ann['counts'], list):
+            # uncompressed RLE
+            rle = maskUtils.frPyObjects(mask_ann, img_h, img_w)
+        else:
+            # rle
+            rle = mask_ann
+        mask = maskUtils.decode(rle)
+        return mask
 
 if __name__ == '__main__':
 

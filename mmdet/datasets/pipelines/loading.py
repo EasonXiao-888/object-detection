@@ -333,6 +333,10 @@ class LoadAnnotations:
                 w)
         results['gt_masks'] = gt_masks
         results['mask_fields'].append('gt_masks')
+
+        ##
+        # print(gt_masks)
+
         return results
 
     def _load_semantic_seg(self, results):

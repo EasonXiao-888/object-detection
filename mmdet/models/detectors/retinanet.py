@@ -1,10 +1,11 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from ..builder import DETECTORS
 from .single_stage import SingleStageDetector
+from .single_stage_rbbox import SingleStageDetectorRbbox
 
 
 @DETECTORS.register_module()
-class RetinaNet(SingleStageDetector):
+class RetinaNet(SingleStageDetectorRbbox):
     """Implementation of `RetinaNet <https://arxiv.org/abs/1708.02002>`_"""
 
     def __init__(self,

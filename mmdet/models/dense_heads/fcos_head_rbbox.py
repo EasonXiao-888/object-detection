@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+from turtle import pos
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,9 +9,9 @@ from mmcv.runner import force_fp32
 from mmdet.core import distance2bbox, multi_apply, multiclass_nms, reduce_mean
 from ..builder import HEADS, build_loss
 from .anchor_free_head_rbbox import AnchorFreeHeadRbbox
+from mmdet.core.post_processing import multiclass_nms_rbbox
 
-
-from mmdet.core.bbox.transforms_rbbox import *
+from mmdet.core.bbox.transforms_rbbox import RotBox2Polys_torch ,poly2bbox_torch, hbb2obb,gt_mask_bp_obbs
 
 INF = 1e8
 
@@ -74,7 +75,7 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
                      gamma=2.0,
                      alpha=0.25,
                      loss_weight=1.0),
-                 loss_bbox=dict(type='SmoothL1Loss', beta=1.0 , loss_weight=1.0),
+                 loss_bbox=dict(type='GIoULoss' , loss_weight=1.0),
                  loss_centerness=dict(
                      type='CrossEntropyLoss',
                      use_sigmoid=True,
@@ -169,8 +170,8 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
              bbox_preds,
              centernesses,
              gt_bboxes,
-             gt_labels,
              gt_masks,
+             gt_labels,
              img_metas,
              gt_bboxes_ignore=None):
         """Compute loss of the head.
@@ -199,8 +200,8 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
         all_level_points = self.get_points(featmap_sizes, bbox_preds[0].dtype,
                                            bbox_preds[0].device)
-        labels, bbox_targets = self.get_targets(all_level_points, gt_bboxes,
-                                                gt_labels,gt_masks)
+        labels, rbbox_targets = self.get_targets(all_level_points, gt_bboxes, gt_masks,
+                                                gt_labels)
 
         num_imgs = cls_scores[0].size(0)
         # flatten cls_scores, bbox_preds and centerness
@@ -209,8 +210,8 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
             for cls_score in cls_scores
         ]
         flatten_bbox_preds = [
-            # bbox_pred.permute(0, 2, 3, 1).reshape(-1, 4)
-            bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
+            bbox_pred.permute(0, 2, 3, 1).reshape(-1, 4)
+            # bbox_pred.permute(0, 2, 3, 1).reshape(-1, 5)
             for bbox_pred in bbox_preds
         ]
         flatten_centerness = [
@@ -221,7 +222,8 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
         flatten_bbox_preds = torch.cat(flatten_bbox_preds)
         flatten_centerness = torch.cat(flatten_centerness)
         flatten_labels = torch.cat(labels)
-        flatten_bbox_targets = torch.cat(bbox_targets)
+        flatten_rbbox_targets = torch.cat(rbbox_targets)
+        # flatten_bbox_targets = torch.cat(bbox_targets)
         # repeat points to align with bbox_preds
         flatten_points = torch.cat(
             [points.repeat(num_imgs, 1) for points in all_level_points])
@@ -238,29 +240,45 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
 
         pos_bbox_preds = flatten_bbox_preds[pos_inds]
         pos_centerness = flatten_centerness[pos_inds]
-        pos_bbox_targets = flatten_bbox_targets[pos_inds]
-        pos_centerness_targets = self.centerness_target(pos_bbox_targets)
+        pos_rbbox_targets = flatten_rbbox_targets[pos_inds]
+        # pos_bbox_targets = flatten_bbox_targets[pos_inds]
+        pos_centerness_targets = self.centerness_target(pos_rbbox_targets)
         # centerness weighted iou loss
         centerness_denorm = max(
             reduce_mean(pos_centerness_targets.sum().detach()), 1e-6)
 
         if len(pos_inds) > 0:
             pos_points = flatten_points[pos_inds]
-            # pos_decoded_bbox_preds = distance2bbox(pos_points, pos_bbox_preds)
+            pos_decoded_bbox_preds = distance2bbox(pos_points, pos_bbox_preds)
+            # pos_decoded_bbox_preds = hbb2obb(pos_decoded_bbox_preds)
+            # pos_rbbox_targets = RotBox2Polys_torch(pos_rbbox_targets)
+            # pos_rbbox_targets = poly2bbox_torch(pos_rbbox_targets)
             # pos_decoded_target_preds = distance2bbox(pos_points,
-            #                                          pos_bbox_targets)
-            loss_bbox = self.loss_bbox(
-                pos_bbox_preds,
-                pos_bbox_targets,
-                bbox_weights = 1.0
-                )
+                                                    #  pos_bbox_targets)
+            # pos_bbox_targets = dbbox2delta(pos_decoded_target_preds , pos_rbbox_targets)
+            # pos_bbox_targets=pos_bbox_targets.to(device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+            
             # loss_bbox = self.loss_bbox(
-            #     pos_decoded_bbox_preds,
-            #     pos_decoded_target_preds,
-            #     weight=pos_centerness_targets,
-            #     avg_factor=centerness_denorm)
+            #     pos_bbox_preds,
+            #     pos_bbox_targets
+            #     )
+            pos_rbbox_targets = pos_rbbox_targets.to(device=torch.device('cuda:0'))
+            pos_decoded_bbox_preds.to(device=torch.device('cuda:0'))
+            pos_centerness_targets = pos_centerness_targets.to(device=torch.device('cuda:0'))
+            centerness_denorm = centerness_denorm.to(device=torch.device('cuda:0'))
+            # print(pos_rbbox_targets.device)
+            # print(pos_decoded_bbox_preds.device)
+            # print(pos_centerness_targets.device)
+            # print(centerness_denorm.device)
+            loss_bbox = self.loss_bbox(
+                pos_decoded_bbox_preds,
+                pos_rbbox_targets,
+                weight=pos_centerness_targets,
+                avg_factor=centerness_denorm)
+            
             loss_centerness = self.loss_centerness(
                 pos_centerness, pos_centerness_targets, avg_factor=num_pos)
+
         else:     
             loss_bbox = pos_bbox_preds.sum()
             loss_centerness = pos_centerness.sum()
@@ -397,7 +415,7 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
                                                        -1).sigmoid()
 
             bbox_pred = bbox_pred.permute(0, 2, 3,
-                                          1).reshape(batch_size, -1, 5) # -1 ,4
+                                          1).reshape(batch_size, -1, 4) # -1 ,5
             points = points.expand(batch_size, -1, 2)
             # Get top-k prediction
             from mmdet.core.export import get_k_for_topk
@@ -415,8 +433,8 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
                                             2)[transformed_inds, :].reshape(
                                                 batch_size, -1, 2)
                     bbox_pred = bbox_pred.reshape(
-                        # -1, 4)[transformed_inds, :].reshape(batch_size, -1, 4)
-                        -1, 5)[transformed_inds, :].reshape(batch_size, -1, 5)
+                        -1, 4)[transformed_inds, :].reshape(batch_size, -1, 4)
+                        # -1, 5)[transformed_inds, :].reshape(batch_size, -1, 5)
                     scores = scores.reshape(
                         -1, self.num_classes)[transformed_inds, :].reshape(
                             batch_size, -1, self.num_classes)
@@ -427,16 +445,18 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
                     bbox_pred = bbox_pred[batch_inds, topk_inds, :]
                     scores = scores[batch_inds, topk_inds, :]
                     centerness = centerness[batch_inds, topk_inds]
-
+            
+            # print(bbox_pred.shape)
             bboxes = distance2bbox(points, bbox_pred, max_shape=img_shapes)
+            bboxes = hbb2obb(bboxes)
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
             mlvl_centerness.append(centerness)
-
+            
         batch_mlvl_bboxes = torch.cat(mlvl_bboxes, dim=1)
-        if rescale:
-            batch_mlvl_bboxes /= batch_mlvl_bboxes.new_tensor(
-                scale_factors).unsqueeze(1)
+        # if rescale:
+        #     batch_mlvl_bboxes /= batch_mlvl_bboxes.new_tensor(
+        #         scale_factors).unsqueeze(1)
         batch_mlvl_scores = torch.cat(mlvl_scores, dim=1)
         batch_mlvl_centerness = torch.cat(mlvl_centerness, dim=1)
 
@@ -465,7 +485,7 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
             for (mlvl_bboxes, mlvl_scores,
                  mlvl_centerness) in zip(batch_mlvl_bboxes, batch_mlvl_scores,
                                          batch_mlvl_centerness):
-                det_bbox, det_label = multiclass_nms(
+                det_bbox, det_label = multiclass_nms_rbbox(
                     mlvl_bboxes,
                     mlvl_scores,
                     cfg.score_thr,
@@ -481,6 +501,89 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
             ]
         return det_results
 
+    # def get_bboxes(self, cls_scores, bbox_preds, img_metas, cfg,
+    #                rescale=False):
+    #     assert len(cls_scores) == len(bbox_preds)
+    #     num_levels = len(cls_scores)
+
+    #     mlvl_anchors = [
+    #         self.anchor_generators[i].grid_anchors(cls_scores[i].size()[-2:],
+    #                                                self.anchor_strides[i])
+    #         for i in range(num_levels)
+    #     ]
+    #     result_list = []
+    #     for img_id in range(len(img_metas)):
+    #         cls_score_list = [
+    #             cls_scores[i][img_id].detach() for i in range(num_levels)
+    #         ]
+    #         bbox_pred_list = [
+    #             bbox_preds[i][img_id].detach() for i in range(num_levels)
+    #         ]
+    #         img_shape = img_metas[img_id]['img_shape']
+    #         scale_factor = img_metas[img_id]['scale_factor']
+    #         proposals = self.get_bboxes_single(cls_score_list, bbox_pred_list,
+    #                                            mlvl_anchors, img_shape,
+    #                                            scale_factor, cfg, rescale)
+    #         result_list.append(proposals)
+    #     return result_list
+
+    # def get_bboxes_single(self,
+    #                       cls_scores,
+    #                       bbox_preds,
+    #                       mlvl_anchors,
+    #                       img_shape,
+    #                       scale_factor,
+    #                       cfg,
+    #                       rescale=False):
+    #     assert len(cls_scores) == len(bbox_preds) == len(mlvl_anchors)
+    #     mlvl_bboxes = []
+    #     mlvl_scores = []
+    #     for cls_score, bbox_pred, anchors in zip(cls_scores, bbox_preds,
+    #                                              mlvl_anchors):
+    #         assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
+    #         cls_score = cls_score.permute(1, 2,
+    #                                       0).reshape(-1, self.cls_out_channels)
+    #         if self.use_sigmoid_cls:
+    #             scores = cls_score.sigmoid()
+    #         else:
+    #             scores = cls_score.softmax(-1)
+    #         bbox_pred = bbox_pred.permute(1, 2, 0).reshape(-1, 5)
+    #         nms_pre = cfg.get('nms_pre', -1)
+    #         if nms_pre > 0 and scores.shape[0] > nms_pre:
+    #             if self.use_sigmoid_cls:
+    #                 max_scores, _ = scores.max(dim=1)
+    #             else:
+    #                 max_scores, _ = scores[:, 1:].max(dim=1)
+    #             _, topk_inds = max_scores.topk(nms_pre)
+    #             anchors = anchors[topk_inds, :]
+    #             bbox_pred = bbox_pred[topk_inds, :]
+    #             scores = scores[topk_inds, :]
+
+    #         rbbox_ex_anchors = hbb2obb_v2(anchors)
+    #         if self.with_module:
+    #             bboxes = delta2dbbox(rbbox_ex_anchors, bbox_pred, self.target_means,
+    #                                  self.target_stds, img_shape)
+    #         else:
+    #             bboxes = delta2dbbox_v3(rbbox_ex_anchors, bbox_pred, self.target_means,
+    #                                  self.target_stds, img_shape)
+    #         mlvl_bboxes.append(bboxes)
+    #         mlvl_scores.append(scores)
+    #     mlvl_bboxes = torch.cat(mlvl_bboxes)
+    #     if rescale:
+    #         # mlvl_bboxes /= mlvl_bboxes.new_tensor(scale_factor)
+    #         mlvl_bboxes[:, :4] /= mlvl_bboxes[:, :4].new_tensor(scale_factor)
+    #     mlvl_scores = torch.cat(mlvl_scores)
+    #     if self.use_sigmoid_cls:
+    #         padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
+    #         mlvl_scores = torch.cat([padding, mlvl_scores], dim=1)
+    #     # det_bboxes, det_labels = multiclass_nms(mlvl_bboxes, mlvl_scores,
+    #     #                                         cfg.score_thr, cfg.nms,
+    #     #                                         cfg.max_per_img)
+    #     det_bboxes, det_labels = multiclass_nms_rbbox(mlvl_bboxes, mlvl_scores,
+    #                                             cfg.score_thr, cfg.nms,
+    #                                             cfg.max_per_img)
+    #     return det_bboxes, det_labels
+
     def _get_points_single(self,
                            featmap_size,
                            stride,
@@ -493,7 +596,7 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
                              dim=-1) + stride // 2
         return points
 
-    def get_targets(self, points, gt_bboxes_list, gt_labels_list, gt_masks):
+    def get_targets(self, points, gt_bboxes_list, gt_masks, gt_labels_list):
         """Compute regression, classification and centerness targets for points
         in multiple images.
 
@@ -526,36 +629,50 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
         num_points = [center.size(0) for center in points]
 
         # get labels and bbox_targets of each image
-        labels_list, bbox_targets_list = multi_apply(
+        labels_list, rbbox_targets_list = multi_apply(
             self._get_target_single,
             gt_bboxes_list,
-            gt_labels_list,
             gt_masks,
+            gt_labels_list,
             points=concat_points,
             regress_ranges=concat_regress_ranges,
             num_points_per_lvl=num_points)
 
         # split to per img, per level
         labels_list = [labels.split(num_points, 0) for labels in labels_list]
-        bbox_targets_list = [
-            bbox_targets.split(num_points, 0)
-            for bbox_targets in bbox_targets_list
+        rbbox_targets_list = [
+            rbbox_targets.split(num_points, 0)
+            for rbbox_targets in rbbox_targets_list
         ]
+        # #add sampler for bbox2delta
+        # bbox_targets_list = [
+        #     bbox_targets.split(num_points, 0)
+        #     for bbox_targets in bbox_targets_list
+        # ] 
 
         # concat per level image
         concat_lvl_labels = []
-        concat_lvl_bbox_targets = []
+        concat_lvl_rbbox_targets = []
         for i in range(num_levels):
             concat_lvl_labels.append(
                 torch.cat([labels[i] for labels in labels_list]))
-            bbox_targets = torch.cat(
-                [bbox_targets[i] for bbox_targets in bbox_targets_list])
+            rbbox_targets = torch.cat(
+                [rbbox_targets[i] for rbbox_targets in rbbox_targets_list])
             if self.norm_on_bbox:
-                bbox_targets = bbox_targets / self.strides[i]
-            concat_lvl_bbox_targets.append(bbox_targets)
-        return concat_lvl_labels, concat_lvl_bbox_targets
+                rbbox_targets = rbbox_targets / self.strides[i]
+            concat_lvl_rbbox_targets.append(rbbox_targets)
 
-    def _get_target_single(self, gt_bboxes, gt_labels, gt_masks, points, regress_ranges,
+        # # add sample for bbox2delta
+        # concat_lvl_bbox_targets = []
+        # for i in range(num_levels):
+        #     bbox_targets = torch.cat(
+        #         [bbox_targets[i] for bbox_targets in bbox_targets_list])
+        #     if self.norm_on_bbox:
+        #         bbox_targets = bbox_targets / self.strides[i]
+        #     concat_lvl_bbox_targets.append(bbox_targets)
+        return concat_lvl_labels, concat_lvl_rbbox_targets
+
+    def _get_target_single(self, gt_bboxes, gt_masks, gt_labels,  points, regress_ranges,
                            num_points_per_lvl):
         """Compute regression and classification targets for a single image."""
         num_points = points.size(0)
@@ -634,18 +751,20 @@ class FCOSHeadRbbox(AnchorFreeHeadRbbox):
         min_area, min_area_inds = areas.min(dim=1)
 
         #修改补充## choose the positive rbbox target for smooth loss calculating later
-        gt_obbs = gt_mask_bp_obbs(gt_masks, with_module = True)
+        gt_obbs = gt_mask_bp_obbs(gt_masks)
         # (num_gts,5)
         gt_obbs_ts = torch.from_numpy(gt_obbs)        
         # (num_points,num_gts,5)
         gt_obbs = gt_obbs_ts[None].expand(num_points, num_gts, 5)
         # (num_points,5)
-        bbox_targets = gt_obbs[range(num_points), min_area_inds]
+        rbbox_targets = gt_obbs[range(num_points), min_area_inds]
 
         labels = gt_labels[min_area_inds]
         labels[min_area == INF] = self.num_classes  # set as BG
-        # bbox_targets = bbox_targets[range(num_points), min_area_inds]
-        #  bbox_targets shape (num_points,4)
+        bbox_targets = bbox_targets[range(num_points), min_area_inds]
+        # # change hbb(x,y,x,y) to obb(x,y,w,h,thelta)
+        # bbox_targets = hbb2obb(bbox_targets)
+        # # bbox_targets_sample shape (num_points,4)
 
         return labels, bbox_targets
 

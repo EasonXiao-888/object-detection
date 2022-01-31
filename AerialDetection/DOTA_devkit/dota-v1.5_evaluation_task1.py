@@ -125,7 +125,7 @@ def voc_eval(detpath,
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
     imagenames = [x.strip() for x in lines]
-    #print('imagenames: ', imagenames)
+    # print('imagenames: ', imagenames)
     #if not os.path.isfile(cachefile):
         # load annots
     recs = {}
@@ -205,14 +205,12 @@ def voc_eval(detpath,
             iw = np.maximum(ixmax - ixmin + 1., 0.)
             ih = np.maximum(iymax - iymin + 1., 0.)
             inters = iw * ih
-
             # union
             uni = ((bb_xmax - bb_xmin + 1.) * (bb_ymax - bb_ymin + 1.) +
                    (BBGT_xmax - BBGT_xmin + 1.) *
                    (BBGT_ymax - BBGT_ymin + 1.) - inters)
 
             overlaps = inters / uni
-
             BBGT_keep_mask = overlaps > 0
             BBGT_keep = BBGT[BBGT_keep_mask, :]
             BBGT_keep_index = np.where(overlaps > 0)[0]
@@ -243,8 +241,8 @@ def voc_eval(detpath,
 
     # compute precision recall
 
-    print('check fp:', fp)
-    print('check tp', tp)
+    # print('check fp:', fp)
+    # print('check tp', tp)
 
 
     print('npos num:', npos)
@@ -261,19 +259,23 @@ def voc_eval(detpath,
 
 def main():
 
-    detpath = r'/home/test/Persons/hukaixuan/DOTA_devkit-master/evaluation_example/result_classname/Task1_{:s}.txt'
-    annopath = r'/home/test/Persons/hukaixuan/DOTA_devkit-master/evaluation_example/row_DOTA_labels/{:s}.txt'
-    imagesetfile = r'/home/test/Persons/hukaixuan/DOTA_devkit-master/evaluation_example/imgnamefile.txt'
+    # detpath = r'/home/test/Persons/hukaixuan/DOTA_devkit-master/evaluation_example/result_classname/Task1_{:s}.txt'
+    # annopath = r'/home/test/Persons/hukaixuan/DOTA_devkit-master/evaluation_example/row_DOTA_labels/{:s}.txt'
+    # imagesetfile = r'/home/test/Persons/hukaixuan/DOTA_devkit-master/evaluation_example/imgnamefile.txt'
+
+    detpath = r'work_dirs/fcos/Task1_results_nms/bridge.txt'
+    annopath = r'data/dota/val/labelTxt/P0003.txt'
+    imagesetfile = r'AerialDetection/DOTA_devkit/imagename2txt.txt'
 
     # detpath = r'PATH_TO_BE_CONFIGURED/Task1_{:s}.txt'
     # annopath = r'PATH_TO_BE_CONFIGURED/{:s}.txt' # change the directory to the path of val/labelTxt, if you want to do evaluation on the valset
     # imagesetfile = r'PATH_TO_BE_CONFIGURED/valset.txt'
 
     # For demo
-    classnames = ['harbor', 'large-vehicle', 'ship', 'small-vehicle']
+    # classnames = ['harbor', 'large-vehicle', 'ship', 'small-vehicle']
     # For DOTA-v1.5
-    # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
-    #             'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', 'container-crane']
+    classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
+                'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', 'container-crane']
      # For DOTA-v1.0
     # classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
     #             'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter', ']

@@ -10,7 +10,7 @@ import dota_utils as util
 import re
 import time
 import polyiou
-from poly_nms_gpu.nms_wrapper import poly_nms_gpu
+# from poly_nms_gpu.nms_wrapper import poly_nms_gpu
 import pdb
 
 ## the thresh for nms when merge image

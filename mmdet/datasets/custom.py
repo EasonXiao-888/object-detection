@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+from operator import index
 import os.path as osp
 import warnings
 from collections import OrderedDict
@@ -12,6 +13,8 @@ from torch.utils.data import Dataset
 from mmdet.core import eval_map, eval_recalls
 from .builder import DATASETS
 from .pipelines import Compose
+from mmdet.core import BitmapMasks
+import pycocotools.mask as maskUtils
 
 
 @DATASETS.register_module()
@@ -197,6 +200,33 @@ class CustomDataset(Dataset):
                 idx = self._rand_another(idx)
                 continue
             return data
+    
+    def _poly2mask(self, mask_ann, img_h, img_w):
+        """Private function to convert masks represented with polygon to
+        bitmaps.
+
+        Args:
+            mask_ann (list | dict): Polygon mask annotation input.
+            img_h (int): The height of output mask.
+            img_w (int): The width of output mask.
+
+        Returns:
+            numpy.ndarray: The decode bitmap mask of shape (img_h, img_w).
+        """
+
+        if isinstance(mask_ann, list):
+            # polygon -- a single object might consist of multiple parts
+            # we merge all parts into one mask rle code
+            rles = maskUtils.frPyObjects(mask_ann, img_h, img_w)
+            rle = maskUtils.merge(rles)
+        elif isinstance(mask_ann['counts'], list):
+            # uncompressed RLE
+            rle = maskUtils.frPyObjects(mask_ann, img_h, img_w)
+        else:
+            # rle
+            rle = mask_ann
+        mask = maskUtils.decode(rle)
+        return mask
 
     def prepare_train_img(self, idx):
         """Get training data and annotations after pipeline.
@@ -208,9 +238,23 @@ class CustomDataset(Dataset):
             dict: Training data and annotation after pipeline with new keys \
                 introduced by pipeline.
         """
-
         img_info = self.data_infos[idx]
         ann_info = self.get_ann_info(idx)
+
+        #add from aeral
+        gt_bboxes = ann_info['bboxes']
+        # print(gt_bboxes)
+        if len(gt_bboxes) == 0:
+            return None
+        # gt_masks = ann_info['masks']
+        # h, w = img_info['height'], img_info['width']
+        # gt_masks = BitmapMasks(
+        #         [self._poly2mask(mask, h, w) for mask in gt_masks], h, w)
+        # # print(gt_masks)
+        # # print(sum(sum(np.array(gt_masks))))
+        # if sum((sum(gt_masks))).all() == 0:
+            # return None
+
         results = dict(img_info=img_info, ann_info=ann_info)
         if self.proposals is not None:
             results['proposals'] = self.proposals[idx]

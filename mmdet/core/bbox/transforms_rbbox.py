@@ -1,5 +1,8 @@
+from logging import exception
 import mmcv
 import numpy as np
+from numpy.core.defchararray import index
+from numpy.core.numeric import binary_repr
 import torch
 import math
 import cv2
@@ -535,7 +538,7 @@ def Tuplelist2Polylist(tuple_poly_list):
 #
 # def mask2poly_single(binary_mask):
 #     """
-#
+
 #     :param binary_mask:
 #     :return:
 #     """
@@ -547,11 +550,11 @@ def Tuplelist2Polylist(tuple_poly_list):
 #     rect = cv2.minAreaRect(max_contour)
 #     poly = cv2.boxPoints(rect)
 #     # poly = TuplePoly2Poly(poly)
-#
+
 #     return poly
-    # except:
-    #     # TODO: assure there is no empty mask_poly
-    #     return []
+#     # except:
+#     #     # TODO: assure there is no empty mask_poly
+#     #     return []
 
 # TODO: test the function
 def mask2poly_single(binary_mask):
@@ -560,6 +563,9 @@ def mask2poly_single(binary_mask):
     :param binary_mask:
     :return:
     """
+    # if sum(sum(binary_mask)) == 0:
+    #     print(index(binary_mask),)
+    # print((binary_mask).shape)
     try:
         contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         # contour_lens = np.array(list(map(len, contours)))
@@ -568,10 +574,17 @@ def mask2poly_single(binary_mask):
         max_contour = max(contours, key=len)
         rect = cv2.minAreaRect(max_contour)
         poly = cv2.boxPoints(rect)
+        # print(poly,type(poly),poly.shape)
         # poly = TuplePoly2Poly(poly)
-    except:
-        import pdb
-        pdb.set_trace()
+    # except Exception as e:
+    except :
+        # pass
+        poly = np.zeros((4,2))
+        return poly
+        # # import pdb
+        # # pdb.set_trace()
+        # print(repr(e))
+    
     return poly
 
 def mask2poly(binary_mask_list):
@@ -653,7 +666,7 @@ def get_best_begin_point(coordinate_list):
 def xy2wh(boxes):
     """
 
-    :param boxes: (xmin, ymin, xmax, ymax) (n, 4)
+    :param boxes: (xmin, ymin, xmax, ymax) (n, 4) (B,N,4)
     :return: out_boxes: (x_ctr, y_ctr, w, h) (n, 4)
     """
     num_boxes = boxes.size(0)
@@ -662,8 +675,7 @@ def xy2wh(boxes):
     ex_heights = boxes[..., 3] - boxes[..., 1] + 1.0
     ex_ctr_x = boxes[..., 0] + 0.5 * (ex_widths - 1.0)
     ex_ctr_y = boxes[..., 1] + 0.5 * (ex_heights - 1.0)
-
-    return torch.cat((ex_ctr_x.unsqueeze(1), ex_ctr_y.unsqueeze(1), ex_widths.unsqueeze(1), ex_heights.unsqueeze(1)), 1)
+    return torch.cat((ex_ctr_x.unsqueeze(2), ex_ctr_y.unsqueeze(2), ex_widths.unsqueeze(2), ex_heights.unsqueeze(2)), 2)
 
 def xy2wh_c(boxes):
     """
@@ -720,14 +732,17 @@ def wh2xy_c(bboxes):
 def hbb2obb(bboxes):
     """
 
-    :param bboxes: shape (n, 4) (xmin, ymin, xmax, ymax)
+    :param bboxes: shape (n, 4) (xmin, ymin, xmax, ymax) (B,N,4)
     :return: dbboxes: shape (n, 5) (x_ctr, y_ctr, w, h, angle)
     """
-    num_boxes = bboxes.size(0)
+    # print(bboxes.shape)
+    num_boxes = bboxes.size(1)
     c_bboxes = xy2wh(bboxes)
     initial_angles = -c_bboxes.new_ones((num_boxes, 1)) * np.pi / 2
+    # print(c_bboxes.shape,initial_angles.shape)
+    initial_angles = initial_angles.unsqueeze(0)
     # initial_angles = -torch.ones((num_boxes, 1)) * np.pi/2
-    dbboxes = torch.cat((c_bboxes, initial_angles), 1)
+    dbboxes = torch.cat((c_bboxes, initial_angles), 2)
 
     return dbboxes
 
@@ -892,6 +907,7 @@ def poly2bbox(polys):
     :param polys: (x1, y1, ..., x4, y4) (n, 8)
     :return: boxes: (xmin, ymin, xmax, ymax) (n, 4)
     """
+    polys = polys.cpu().numpy()
     n = polys.shape[0]
     xs = np.reshape(polys, (n, 4, 2))[:, :, 0]
     ys = np.reshape(polys, (n, 4, 2))[:, :, 1]
@@ -907,6 +923,24 @@ def poly2bbox(polys):
     ymax = ymax[:, np.newaxis]
 
     return np.concatenate((xmin, ymin, xmax, ymax), 1)
+
+def poly2bbox_torch(polys):
+
+    n = polys.shape[0]
+    xs = torch.reshape(polys, (n, 4, 2))[:, :, 0]
+    ys = torch.reshape(polys, (n, 4, 2))[:, :, 1]
+    # print(xs,xs.shape)
+    xmin, ind = torch.min(xs, 1)
+    ymin, ind = torch.min(ys, 1)
+    xmax, ind = torch.max(xs, 1)
+    ymax, ind = torch.max(ys, 1)
+    # print(xmin,type(xmin))
+    bbox = torch.cat((xmin.unsqueeze(1),
+                     ymin.unsqueeze(1),
+                     xmax.unsqueeze(1),
+                     ymax.unsqueeze(1)), 1)
+    # print(bbox,type(bbox),bbox.shape)
+    return bbox 
 
 def dbbox2roi(dbbox_list):
     """
